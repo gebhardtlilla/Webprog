@@ -40,12 +40,23 @@ function show(data) {
 
 // JSON: JavaScript Object Notation
 const button = document.querySelector("form button");
-async function handleClick(e) {
+function handleClick(e) {
     e.preventDefault();
     const input = document.querySelector("form input");
     
-    const response = await fetch(`http://localhost/greet-ajax/?username=${input.value}`);
-    const data = await response.json();
-    show(data);
+    fetch(`http://localhost/greet-ajax/?username=${input.value}`)
+    .then(response => {
+        // response.status !== 200
+        if (!response.ok) {
+            throw new Error("Nincs ilyen felhasználó!");
+        }
+        return response.json();
+    })
+    .then(data => show(data))
+    .catch(error => console.log(error.message));
+    // Mi lehet hiba?
+    // 1. Nem fut a szerver
+    // 2. Nem jó típusú adatot ad a szerver
+    // 3. Nincs ilyen felhasználó...
 }
 button.addEventListener("click", handleClick);

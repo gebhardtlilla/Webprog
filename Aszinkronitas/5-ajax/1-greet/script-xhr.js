@@ -27,6 +27,7 @@ setInterval(() => {
     table.rows[i].cells[j].style.backgroundColor = `rgba(${randint(0, 255)}, ${randint(0, 255)}, ${randint(0, 255)}, 0.5)`;
 }, 1000);
 
+// {name: 'Farkas Norbert', friends: 314}
 function show(data) {
     document.querySelector("form").classList.add("hidden");
     const div = document.querySelector("#adatok");
@@ -39,6 +40,9 @@ function show(data) {
 
 // JSON: JavaScript Object Notation
 // XMLHttpRequest (xhr)
+// 200 - OK
+// 404 - NOT FOUND
+// 400 - BAD REQUEST (hiba van)
 const button = document.querySelector("form button");
 function handleClick(e) {
     e.preventDefault();
@@ -48,7 +52,11 @@ function handleClick(e) {
     xhr.open("GET", `http://localhost/greet-ajax/?username=${input.value}`);
     xhr.onload = () => {
         const data = JSON.parse(xhr.response); // string => object
-        show(data);
+        if (xhr.status === 200) {
+            show(data);
+        } else {
+            console.log(data.error);
+        }
     };
     xhr.send();
 }
