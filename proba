@@ -1,0 +1,413 @@
+// A játékhoz használt képek tömbje (minden kép egyedi azonosítóval, párokhoz duplikálva is lehet)
+const images = [
+    "kepek/macska.png",
+    "kepek/bika.png",
+    "kepek/mester.png",
+    "kepek/halalfej.png",
+    "kepek/paci.png",
+    "kepek/bunny.png",
+    "kepek/mehecske.png",
+    "kepek/teki.png",
+    "kepek/macska.png",
+    "kepek/adrien.png",
+    "kepek/katica.png",
+    "kepek/marinette.png"
+];
+
+// A jelenleg felfordított kártyákat tartalmazó tömb (max 2 lehet benne egyszerre)
+forditott_kartyak = [];
+// Ha true, akkor a tábla zárolva van (nem lehet kattintani), pl. animációk vagy ellenőrzés közben
+let lockBoard = false;
+// Megtalált párok száma
+let talalt_parok = 0;
+// Hibás próbálkozások száma (nem egyező párok)
+let hibas_parok = 0;
+// Aktuális nehézségi szint (konnyu, kozepes, nehez)
+let nehezseg = null;
+
+// DOM elemek változókba mentése a gyorsabb eléréshez
+const email = document.getElementById("email");
+const age = document.getElementById("age");
+const reg = document.getElementById("regist");
+const szintek_gombok = document.getElementById("szintek");
+const ul = document.querySelector("ul");
+const h2 = document.querySelector("h2");
+const stat = document.getElementById("stat")
+const section = document.getElementById("jatekmezo")
+
+const counterElement = document.getElementById("counter");
+const timerElement = document.getElementById("timer");
+const newgame = document.getElementById("newgame");
+
+// Időméréshez szükséges változók
+let startTime;
+// TIMER INTERVAL: Az időzítő azonosítója, amivel később leállíthatjuk a számlálót
+let timerInterval;
+
+// Szintválasztó gomb eseménykezelője
+szintek_gombok.addEventListener("click", szintnev);
+
+// Ez a függvény kezeli, hogy melyik szintgomb lett kiválasztva
+function szintnev(e){
+    const button = e.target;
+    // Csak akkor fut le, ha tényleg egy szintgombra kattintottak
+    if (!button.matches(".szintgomb")) return;
+    // ID vs SELECTED CLASS:
+    // - Az ID (pl. "konnyu", "kozepes", "nehez") csak azonosításra szolgál, hogy tudjuk, melyik gomb volt korábban kiválasztva.
+    // - A "selected" classList csak vizuális kiemelésre szolgál, hogy a felhasználó lássa, melyik szint aktív.
+    // Előzőleg kiválasztott szintről levesszük a kijelölést (ha volt már)
+    if (nehezseg) document.querySelector(`#${nehezseg}`).classList.remove("selected");
+    // Az új szint gombot kijelöljük (vizuális kiemelés)
+    button.classList.add("selected");
+    // Beállítjuk az aktuális nehézséget (az id alapján tudjuk, melyik gomb volt az előző)
+    nehezseg = button.id;
+}
+
+// Regisztrációs adatok ellenőrzése, és ha minden rendben, továbblépés a szintválasztáshoz
+function szintvalasztas() {
+    // trim() - eltávolítja a szóközöket az email elejéről és végéről, hogy ne lehessen véletlenül üres karaktereket megadni
+    const emailValue = email.value.trim();
+    const ageValue = age.value;
+
+    // Ellenőrzi, hogy mindkét mező ki van-e töltve
+    if (!emailValue || !ageValue) {
+        alert("Kérlek töltsd ki mindkét mezőt!");
+    }
+    // Egyszerű email formátum ellenőrzés
+    else if (!emailValue.includes('@') || !emailValue.includes('.')) {
+        alert("Az email címnek tartalmaznia kell '@' és '.' karaktert!");
+    } 
+    // Életkor ellenőrzése (1-99 között)
+    else if(ageValue<1 || ageValue > 99){
+        alert("Hibás életkort adtál meg!");
+    }
+    // Ha minden oké, elrejti a regisztrációs mezőket, megjeleníti a szintválasztót
+    else {
+        email.hidden = true;
+        age.hidden = true;
+        szintek_gombok.hidden = false;
+        reg.hidden = true;
+        updateCounter();
+        h2.style.display = "none";
+    }
+}
+
+// Ez a függvény generálja le a játékmezőt a kiválasztott párok számával
+function general(pairsNeeded) {
+    startTimer(); // Időzítő indítása
+    newgame.hidden = true;
+    szintek_gombok.hidden = true;
+    power.disabled = true;
+    help.disabled = true;
+    const ul = document.querySelector("ul");
+    ul.innerHTML = ""; // Játékmező ürítése
+    updateCounter();
+
+    // KÉPEK KIVÁLASZTÁSA: Az első 'pairsNeeded' számú képet választja ki a játékhoz
+    const selectedImages = images.slice(0, pairsNeeded);
+
+    // KÁRTYAKÉZELÉS: Duplikálja a képeket (párokat hoz létre), majd összekeveri őket
+    // sort(() => Math.random() - 0.5): Véletlenszerűen keveri a tömböt, hogy a párok ne egymás mellett legyenek
+    const gameCards = [...selectedImages, ...selectedImages]
+        .sort(() => Math.random() - 0.5);
+
+    // Minden kártyához létrehoz egy <li> elemet, beállítja a képet, eseménykezelőt ad hozzá
+    gameCards.forEach((img, index) => {
+        const li = document.createElement('li');
+        // DATASET.VALUE: A kártya egyedi azonosítója (a kép elérési útja), ezt használjuk a párosítás ellenőrzéséhez
+        li.dataset.value = img;
+        li.innerHTML = `
+            <div class="card-front"></div>
+            <div class="card-back"><img src="${img}" alt="Kép"></div>
+        `;
+        li.addEventListener('click', flipCard);
+        ul.appendChild(li);
+    });
+    
+    document.querySelector("section").hidden = false;
+    const allCards = document.querySelectorAll("li");
+    // Játék elején minden kártyát felfordít rövid időre, hogy a játékos megjegyezhesse
+    allCards.forEach(card => card.classList.add("flipped"));
+    // SETTIMEOUT: 2000ms = 2 másodpercig látszanak a kártyák, utána visszafordulnak
+    // A setTimeout első paramétere egy függvény, amit a második paraméterben megadott idő (ezredmásodperc) múlva futtat le
+    setTimeout(() => {
+        allCards.forEach(card => card.classList.remove("flipped"));
+        lockBoard = false;
+        power.disabled = false;
+        help.disabled = false;
+    }, 2000);
+    lockBoard = true; // Kártyák zárolása, amíg felfordítva vannak
+    power.hidden = false;
+    help.hidden = false;
+}
+
+// Kártya felfordítása kattintásra
+function flipCard() {
+    // Ha a tábla zárolva van, vagy már fel van fordítva a kártya, kilép
+    if (lockBoard || this.classList.contains('flipped')) return;
+    
+    this.classList.add('flipped');
+    forditott_kartyak.push(this); // Hozzáadja a felfordított kártyákhoz
+    
+    // Ha két kártya van felfordítva, ellenőrzi, hogy párt alkotnak-e
+    if (forditott_kartyak.length === 2) {
+        checkMatch();
+    }
+}
+
+// Ellenőrzi, hogy a két felfordított kártya egyezik-e
+function checkMatch() {
+    lockBoard = true; // Zárolja a táblát, amíg az ellenőrzés tart
+    const [card1, card2] = forditott_kartyak;
+    // card1.dataset.value: a kártya egyedi azonosítója (kép elérési útja), így lehet ellenőrizni, hogy egy párt alkotnak-e
+    if (card1.dataset.value === card2.dataset.value) {
+        handleMatch(); // Ha egyeznek, párosítás kezelése
+    } else {
+        hibas_parok++;
+        updateCounter();
+        unflipCards(); // Ha nem egyeznek, visszafordítja őket
+    }
+}
+
+// Ha párosítottunk két kártyát, eltünteti őket és növeli a számlálót
+function handleMatch() {
+    talalt_parok++;
+    updateCounter();
+    
+    // SETTIMEOUT: 800ms = 0.8 másodpercig látszanak még a párosított kártyák, hogy a játékos lássa a találatot
+    setTimeout(() => {
+        forditott_kartyak.forEach(card => {
+            card.style.opacity = '0'; // Kártya eltüntetése (láthatatlan lesz)
+            // POINTER EVENTS: Letiltja a kattintást a már megtalált kártyákra
+            card.style.pointerEvents = 'none';
+        });
+
+        forditott_kartyak = [];
+        lockBoard = false;
+        // Ellenőrzi, hogy minden párt megtaláltunk-e (játék vége)
+        if (talalt_parok === document.querySelectorAll('li').length / 2) {
+            // SETTIMEOUT: 500ms = 0.5 másodperc múlva jelenik meg a nyereményüzenet, hogy legyen ideje eltűnni az utolsó párnak is
+            setTimeout(() => 
+                {
+                    // ALERT: Egyszerű felugró ablak, ami üzenetet jelenít meg a felhasználónak
+                    alert('Gratulálok, nyertél! 🎉'); 
+                    stopTimer(); 
+                    newgame.hidden=false;
+                    power.hidden=true;
+                    help.hidden=true;
+                    section.hidden = true;
+                    helyimentes(); // Eredmény mentése helyileg
+                    publikusmentes(); // Eredmény mentése szerverre
+                }, 500);
+        }
+    }, 800); // Kis késleltetés, hogy látható legyen a párosítás
+}
+
+// Eredmény mentése szerverre (publikus statisztika)
+async function publikusmentes(){
+    const pubdata = {
+        email: email.value,
+        age: age.value,
+        szint: nehezseg,
+        jatekido: parseInt(jatekIdo()),
+        hiba: hibas_parok,
+    }
+    const OPTIONS = {
+        method: "POST",
+        body: JSON.stringify(pubdata)
+    };
+    const response = await fetch(`http://localhost/memory/create/`, OPTIONS);
+    const data = await response.json();
+}
+
+// Eredmény mentése a böngésző localStorage-ba (helyi statisztika)
+function helyimentes(){
+    let datas = JSON.parse(localStorage.getItem("datas"));
+    const mainap = new Date();
+    const data = {
+        email: email.value,
+        age: age.value,
+        szint: nehezseg,
+        jatekido: parseInt(jatekIdo()),
+        hiba: hibas_parok,
+        datum: `${mainap.getFullYear()}-${mainap.getMonth()}-${mainap.getDay()}`
+    };
+    datas.push(data);
+    localStorage.setItem("datas", JSON.stringify(datas));
+}
+
+// Visszaadja az eltelt játékidőt másodpercben
+function jatekIdo(){
+    // Date.now() ezredmásodpercben adja vissza az időt, ezért el kell osztani 1000-rel, hogy másodpercet kapjunk
+    // Például: 165000 ms => 165 másodperc => 2 perc 45 másodperc
+    return Math.floor((Date.now() - startTime) / 1000).toString();
+}
+
+// Ha két kártya nem egyezett, visszafordítja őket kis késleltetéssel
+function unflipCards() {
+    // SETTIMEOUT: 1000ms = 1 másodperc múlva fordítja vissza a hibás kártyákat
+    setTimeout(() => {
+        forditott_kartyak.forEach(card => card.classList.remove('flipped'));
+        forditott_kartyak = [];
+        lockBoard = false;
+    }, 1000);
+}
+
+// Időzítő indítása (játék kezdetén)
+function startTimer() {
+    stopTimer(); // Előző időzítő leállítása, ha volt
+    startTime = Date.now();
+    timerElement.hidden = false;
+    // TIMER INTERVAL: Az időzítő azonosítója, amivel később leállíthatjuk a számlálót
+    timerInterval = setInterval(updateTimer, 1000); // 1 másodpercenként frissít
+    counterElement.hidden = false;
+    updateTimer();
+}
+
+// Időzítő kijelző frissítése (perc:másodperc formátum)
+function updateTimer() {
+    // IDŐSZÁMÍTÁS: Date.now() ezredmásodpercben adja vissza az időt, /1000 másodpercre konvertál
+    const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+    const minutes = Math.floor(elapsedTime / 60);
+    const seconds = elapsedTime % 60;
+    timerElement.textContent = `Idő: ${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+}
+
+// Időzítő leállítása, kijelző nullázása
+function stopTimer() {
+    clearInterval(timerInterval);
+    timerElement.textContent = "Idő: 0:00";
+    timerElement.hidden = true;
+    talalt_parok = 0;
+    hibas_parok = 0;
+    counterElement.hidden = true;
+}
+
+// Párok és hibák számlálójának frissítése
+function updateCounter() {
+    counterElement.textContent = `Talált párok: ${talalt_parok} | Hibás próbálkozások: ${hibas_parok}`;
+    counterElement.hidden = false;
+}
+
+// Játék visszaállítása kezdő állapotba (új játék indításához)
+function reset() {
+    email.hidden = false;
+    age.hidden = false;
+    reg.hidden = false;
+    szintek_gombok.hidden = true;
+    newgame.hidden = true;
+    counterElement.hidden = true;
+    document.querySelector("section").hidden = true;
+    stopTimer();
+    power.hidden = true;
+    help.hidden = true;
+}
+
+// Oldal betöltésekor eseménykezelők beállítása
+document.addEventListener("DOMContentLoaded", () => {
+    reg.addEventListener("click", szintvalasztas);
+    document.getElementById("konnyu").addEventListener("click", () => general(6)); // 6 pár
+    document.getElementById("kozepes").addEventListener("click", () => general(8)); // 8 pár
+    document.getElementById("nehez").addEventListener("click", () => general(12)); // 12 pár
+    newgame.addEventListener("click", reset);
+});
+
+// Statisztika oldalra ugrás gombnyomásra
+stat.addEventListener("click", () => window.location.href = "statisztika_weboldal/index.html");
+
+// "Kártyák felfedése" powerup: minden lefordított kártyát 3 másodpercre felfordít
+power.addEventListener("click", () => {
+    power.disabled = true;
+    const allCards = document.querySelectorAll("li:not(.flipped)");
+    allCards.forEach(card => card.classList.add("flipped"));
+    // SETTIMEOUT: 3000ms = 3 másodpercig látszanak a kártyák, majd visszafordulnak
+    setTimeout(() => {
+        allCards.forEach(card => card.classList.remove("flipped"));
+    }, 3000);
+});
+
+// "Random pár eltüntetése" powerup: véletlenszerűen kiválaszt egy még nem megtalált párt, és eltünteti
+help.addEventListener("click", () => {
+    help.disabled = true;
+    // FILTER LOGIKA: Csak azokat a kártyákat választja ki, amelyek:
+    // 1. Nincsenek felfordítva (:not(.flipped))
+    // 2. Láthatóak (opacity nem 0)
+    const allCards = Array.from(document.querySelectorAll("li:not(.flipped)"))
+        .filter(card => card.style.opacity !== "0");
+    
+    const pairsMap = {};
+
+    // Párok csoportosítása azonosító alapján
+    allCards.forEach(card => {
+        const value = card.dataset.value;
+        if (!pairsMap[value]) {
+            pairsMap[value] = [card];
+        } else {
+            pairsMap[value].push(card);
+        }
+    });
+
+    // Csak azokat vesszük, ahol tényleg 2 kártya van (tehát még nem tűnt el a pár)
+    const pairs = Object.values(pairsMap).filter(pair => pair.length === 2);
+    if (pairs.length === 0) return;
+
+    // Véletlenszerűen kiválaszt egy párt
+    const randomPair = pairs[Math.floor(Math.random() * pairs.length)];
+    const [card1, card2] = randomPair;
+
+    // Felfordítja őket, majd eltünteti (mintha megtaláltuk volna)
+    card1.classList.add("flipped");
+    card2.classList.add("flipped");
+
+    // SETTIMEOUT: 1500ms = 1,5 másodpercig látszik a random pár, majd eltűnik
+    setTimeout(() => {
+        card1.style.opacity = "0";
+        card2.style.opacity = "0";
+        card1.style.pointerEvents = "none";
+        card2.style.pointerEvents = "none";
+        talalt_parok++;
+        updateCounter();
+    }, 1500);
+});
+
+
+// TIMER INTERVAL: Az időzítő azonosítója, amivel később leállíthatjuk a számlálót
+let timerInterval;
+
+// KÉPEK KIVÁLASZTÁSA: Az első 'pairsNeeded' számú képet választja ki a játékhoz
+const selectedImages = images.slice(0, pairsNeeded);
+
+// KÁRTYAKÉZELÉS: Duplikálja a képeket (párokat hoz létre), majd összekeveri őket
+const gameCards = [...selectedImages, ...selectedImages]
+    .sort(() => Math.random() - 0.5); // Math.random()-0.5 véletlenszerű rendezést eredményez (-0.5 és 0.5 közötti érték)
+
+// SETTIMEOUT: Késleltetett művelet végrehajtása (pl. animációkhoz). A szám az ezredmásodpercben megadott késleltetés.
+// Pl. setTimeout(..., 500) = 500ms (0.5 másodperc) késleltetés
+setTimeout(() => {
+  // Kód ami 500ms után fut le
+}, 500);
+
+// DATASET.VALUE: A kártyához tárolt egyedi azonosító (kép elérési útja)
+if (card1.dataset.value === card2.dataset.value) {
+  // Párosítás logikája
+}
+
+// POINTER EVENTS: Egérkattintások letiltása egy elemnél (pl. már megtalált kártyáknál)
+card.style.pointerEvents = 'none'; // Letiltja a kattintást
+card.style.pointerEvents = 'auto'; // Újra engedélyezi
+
+// IDŐSZÁMÍTÁS: Date.now() ezredmásodpercben adja vissza az időt, /1000 másodpercre konvertál
+const elapsedTime = Math.floor((Date.now() - startTime) / 1000); 
+// Például: 165000 ms => 165 másodperc => 2 perc 45 másodperc
+
+// FILTER LOGIKA: Csak azokat a kártyákat választja ki, amelyek:
+// 1. Nincsenek felfordítva (:not(.flipped))
+// 2. Láthatóak (opacity nem 0)
+const allCards = Array.from(document.querySelectorAll("li:not(.flipped)"))
+    .filter(card => card.style.opacity !== "0");
+
+// ID vs SELECTED CLASS (Előző kérdés magyarázata):
+// - Az ID egyedi azonosító a gombokhoz (pl. nehézségi szintekhez)
+// - A 'selected' CSS osztály vizuális kiemelést biztosít a kiválasztott gombnak
+document.querySelector(`#${nehezseg}`).classList.remove("selected"); // Eltávolítja a korábbi kijelölést
+button.classList.add("selected"); // Új kijelölés hozzáadása

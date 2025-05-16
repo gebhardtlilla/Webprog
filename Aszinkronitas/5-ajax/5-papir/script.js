@@ -3,6 +3,7 @@
 
 //dogába ez is lehet külön feladat, táblázatba megjelenítés
 function showData(data) {
+    // data.sort((a, b) => b-a); //nem jó mert objektumok az a meg a b 
     data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); //rendezés függvény csökkenő sorrendbe dátum szerint
     const table = document.querySelector("table");
     table.innerHTML = `<tr>
@@ -10,11 +11,28 @@ function showData(data) {
         <th>Osztály</th>
         <th>Tömeg</th>
     </tr>`;
+    //element = data egy sorja
+   for (const element of data) {
+        const row = document.createElement("tr");
+        const tdDate = document.createElement("td");
+        const tdClass = document.createElement("td");
+        const tdWeight = document.createElement("td");
+        tdDate.innerText = element.date;
+        tdClass.innerText = element.class;
+        tdWeight.innerText = element.weight;
+        row.appendChild(tdDate);
+        row.appendChild(tdClass);
+        row.appendChild(tdWeight);
+        table.appendChild(row);
+    }
 }
 
-const keresButton = document.querySelector("#keres");
-function getData() {
 
+const keresButton = document.querySelector("#keres");
+async function getData() {
+    const response = await fetch("http://localhost/papir/")
+    const data = await response.json();
+    showData(data);
 }
 keresButton.addEventListener("click", getData);
 
